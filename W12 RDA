@@ -1,0 +1,71 @@
+R code of homework week 12 (Constrained ordination: RDA, Partial RDA, Variation Partitioning, CCA)
+# Author: Kent Daniel
+# E-mail: B08605042@ntu.edu.tw / kentdaniel18@gmail.com
+#website: kentdaniel.com
+library(vegan)
+library(cluster)
+library(knitr)
+#-------------------------------------------------------------------------------
+#Q1. 
+#Use the “dominant” copepod species data (from HW1) and environmental data (from HW3). 
+#Apply constrained ordination: 1)determine an appropriate response model; 2)
+#select a set of independent variables; 3) conduct ordination (RDA or CCA); 4) 
+#interpret the results. Try different plotting methods; 
+#e.g., to display your cluster analysis results on the triplot and interpret how the groups vary with respect to environmental variables.
+
+#import data as data frame environment data
+View(enviANDdensity)
+data <- as.data.frame(enviANDdensity)
+#import data
+copcom = read.table("https://ceiba.ntu.edu.tw/course/935d63/content/copepod_composition.txt",header= T )
+
+species <- read.table("https://ceiba.ntu.edu.tw/course/935d63/content/copepodSPlist.txt", header=F, sep = "\t")
+
+#rename row into species 
+rownames(copcom) <- as.character(unlist(species))
+
+#frequency into percentage
+copcom = copcom / 100
+
+#dominant species
+dom = apply(copcom >= 0.02, 2, which)
+dom = sort(unique(unlist(dom)))
+dom = t(copcom[dom, ])
+
+#normalizatin of species data
+dom.log = log(dom + 1)
+dom.norm = dom.log / rowSums(dom.log)
+
+#distance matrix
+dst.dom = vegdist(dom, method = "jaccard")
+
+#hierarchical clustering
+hc.dom = agnes(dst.dom, method = "ward")
+group = cutree(hc.dom, 3)
+group = factor(group, labels = c("Spring", "Summer", "Winter"))
+
+#1)determine an appropriate response model
+#Using DCA length determine linear or unimodal model is more appropriate
+dom.dca <- decorana(dom.log)
+dom.dca
+#2)select a set of independent variables
+#inertia proportion and VIF in RDA of each independent variable
+con.eig = numeric()
+for(i in 1:ncol(data)){
+  m = rda(dom.norm ~ data[, i])
+  con.eig[i] = m$CCA$eig / m$tot_chi
+}
+kable(cbind(con.eig, vif.cca(rda(dom.norm ~ ., data = data.frame(data)))), col.names = c("Inertia proportion", "VIF"), digits = 3)
+#Exclude variables with a VIF larger than 10 to avoid multicollinearity. 
+#Variables excluded are Dissolved Oxygen, Temperature and MaxF. 
+#The inertia proportion and VIF in RDA of other independent variables are shown below.
+data.uncor = data[, -c(2, 5, 6)]
+kable(cbind(con.eig[-c(5, 2, 6)], vif.cca(rda(dom.norm ~ . -DissolvedOxygen - Temperature - maxF, data = data.frame(data)))), col.names = c("Inertia proportion", "VIF"), digits = 3)
+
+#redundancy analysis
+dom.rda <- rda(dom.norm ~ ., data = data.uncor)
+summary(dom.rda)
+
+#triplot without names of species and sites
+ordiplot(dom.rda)
+ordiellipse(dom.rda,group,conf = 0.95, lty = 2, label = T)
